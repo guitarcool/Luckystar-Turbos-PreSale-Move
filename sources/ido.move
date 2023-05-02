@@ -11,6 +11,16 @@ module presale::ido {
     use sui::clock;
     use sui::vec_map;
     use sui::vec_map::VecMap;
+    #[test_only]
+    use sui::test_scenario;
+    #[test_only]
+    use sui::sui::SUI;
+    #[test_only]
+    use sui::test_scenario::{end, next_tx};
+    #[test_only]
+    use sui::coin::mint_for_testing;
+    #[test_only]
+    use sui::test_utils;
 
     const NOT_WHITELIST: u64 = 1000;
     const NOT_STARTED: u64 = 1001;
@@ -35,10 +45,17 @@ module presale::ido {
         max_amount: u64,
         balance: Coin<T>,
         white_listed: vector<address>,
-        members:VecMap<address,u64>,
+        members: VecMap<address, u64>,
     }
 
-    public entry fun create_presale<T>(start_time: u64, end_time: u64, raise: u64,min_amount:u64,max_amount:u64,ctx: &mut TxContext) {
+    public entry fun create_presale<T>(
+        start_time: u64,
+        end_time: u64,
+        raise: u64,
+        min_amount: u64,
+        max_amount: u64,
+        ctx: &mut TxContext
+    ) {
         let presale = PreSale<T> {
             id: object::new(ctx),
             status: 0,
@@ -77,14 +94,17 @@ module presale::ido {
 
 
         let amount = coin::value(&payment);
-        assert!(sale.raise + amount <= sale.raise, MAX_CAP_REACHED);
+        let balance = coin::value(&sale.balance);
+
+        assert!(balance + amount <= sale.raise, MAX_CAP_REACHED);
         assert!(amount <= sale.max_amount, USER_MAX_CAP_REACHED);
         assert!(amount >= sale.min_amount, USER_MAX_CAP_REACHED);
         coin::join(&mut sale.balance, payment);
 
         if (vec_map::contains(&mut sale.members, &sender)) {
             let account_amount = vec_map::get_mut(&mut sale.members, &sender);
-            assert!(*account_amount + amount <= sale.max_amount, USER_MAX_CAP_REACHED);
+
+            assert!((*account_amount + amount) <= sale.max_amount, USER_MAX_CAP_REACHED);
             *account_amount = (*account_amount + amount);
         } else {
             vec_map::insert(&mut sale.members, sender, amount);
@@ -118,6 +138,14 @@ module presale::ido {
         public_transfer(split_amount, tx_context::sender(ctx));
     }
 
+    public entry fun set_pub_or_wihte_listed_only<T>(
+        sale: &mut PreSale<T>,
+        manage: &ManageCapAbility<T>
+    ) {
+        assert!(object::id(sale) == manage.sale_id, OWNER_ONLY);
+        sale.only_whitelist = !sale.only_whitelist;
+    }
+
     public entry fun add_white_list<T>(
         sale: &mut PreSale<T>,
         manage: &ManageCapAbility<T>,
@@ -130,7 +158,360 @@ module presale::ido {
             let address = vector::pop_back(&mut list);
             if (!is_whitelisted(sale, address)) {
                 vector::push_back(&mut sale.white_listed, address);
-            }
+            };
+            i = i + 1;
         }
     }
+
+    public entry fun increment_endtime<T>(
+        sale: &mut PreSale<T>,
+        manage: &ManageCapAbility<T>,
+        end_time: u64
+    ) {
+        assert!(object::id(sale) == manage.sale_id, OWNER_ONLY);
+        sale.end_time = end_time;
+    }
+
+    public entry fun increment_starttime<T>(
+        sale: &mut PreSale<T>,
+        manage: &ManageCapAbility<T>,
+        start_time: u64
+    ) {
+        assert!(object::id(sale) == manage.sale_id, OWNER_ONLY);
+        sale.start_time = start_time;
+    }
+
+    #[test_only]
+    const DECIMA: u64 = 1000000000;
+    #[test_only]
+    const START_TIMEL: u64 = 0;
+    #[test_only]
+    const END_TIME: u64 = 1;
+
+    #[test]
+    fun test_wihte_list() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+        create_presale<SUI>(START_TIMEL, END_TIME, 100 * DECIMA, 1 * DECIMA, 5 * DECIMA, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
+        let cap = test_scenario::take_from_sender<ManageCapAbility<SUI>>(&mut scenario);
+
+        let list = vector::empty();
+        vector::push_back(&mut list, sender);
+        set_pub_or_wihte_listed_only(&mut presale, &mut cap);
+        add_white_list(&mut presale, &mut cap, list);
+        let coin = mint_for_testing<SUI>(5 * DECIMA, &mut ctx);
+        let clock = clock::create_for_testing(&mut ctx);
+
+        fund(&mut presale, coin, &clock, &mut ctx);
+
+        test_utils::destroy(clock);
+        test_scenario::return_to_sender(&mut scenario, cap);
+        test_scenario::return_shared(presale);
+        end(scenario);
+    }
+
+    #[test]
+    #[expected_failure]
+    fun test_wihte_list_only() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+        create_presale<SUI>(START_TIMEL, END_TIME, 100 * DECIMA, 1 * DECIMA, 5 * DECIMA, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
+        let cap = test_scenario::take_from_sender<ManageCapAbility<SUI>>(&mut scenario);
+        let coin = mint_for_testing<SUI>(5 * DECIMA, &mut ctx);
+        let clock = clock::create_for_testing(&mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        assert!(coin::value(&presale.balance) == 5 * DECIMA, 1);
+
+        set_pub_or_wihte_listed_only(&mut presale, &mut cap);
+        let coin = mint_for_testing<SUI>(5 * DECIMA, &mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+
+        test_utils::destroy(clock);
+        test_scenario::return_to_sender(&mut scenario, cap);
+        test_scenario::return_shared(presale);
+        end(scenario);
+    }
+
+    #[test]
+    #[expected_failure]
+    fun test_manage_ablitiy() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+        create_presale<SUI>(START_TIMEL, END_TIME, 100 * DECIMA, 1 * DECIMA, 5 * DECIMA, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
+        let cap = ManageCapAbility<SUI>{
+            id:object::new(&mut ctx),
+            sale_id: object::id(&presale),
+        };
+        set_pub_or_wihte_listed_only(&mut presale, &cap);
+        cap.sale_id = object::id(&cap);
+        set_pub_or_wihte_listed_only(&mut presale, &cap);
+
+        test_utils::destroy(cap);
+        test_scenario::return_shared(presale);
+        end(scenario);
+    }
+
+    #[test]
+    #[expected_failure]
+    fun test_fund_twice() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+        create_presale<SUI>(START_TIMEL, END_TIME, 100 * DECIMA, 1 * DECIMA, 5 * DECIMA, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
+        let cap = test_scenario::take_from_sender<ManageCapAbility<SUI>>(&mut scenario);
+        let coin = mint_for_testing<SUI>(5 * DECIMA, &mut ctx);
+        let clock = clock::create_for_testing(&mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        assert!(coin::value(&presale.balance) == 5 * DECIMA, 1);
+
+        let coin = mint_for_testing<SUI>(5 * DECIMA, &mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        assert!(coin::value(&presale.balance) == 5 * DECIMA, 1);
+
+        test_utils::destroy(clock);
+        test_scenario::return_to_sender(&mut scenario, cap);
+        test_scenario::return_shared(presale);
+        end(scenario);
+    }
+
+    #[test]
+    fun test_fund() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+        create_presale<SUI>(START_TIMEL, END_TIME, 100 * DECIMA, 1 * DECIMA, 5 * DECIMA, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
+        let cap = test_scenario::take_from_sender<ManageCapAbility<SUI>>(&mut scenario);
+        let coin = mint_for_testing<SUI>(2 * DECIMA, &mut ctx);
+        let clock = clock::create_for_testing(&mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        assert!(coin::value(&presale.balance) == 2 * DECIMA, 1);
+
+        let coin = mint_for_testing<SUI>(2 * DECIMA, &mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        let amount = vec_map::get(&presale.members,&sender);
+        assert!(*amount == (4 * DECIMA), 1);
+        assert!(coin::value(&presale.balance) == 4 * DECIMA, 1);
+
+        let coin = mint_for_testing<SUI>(1 * DECIMA, &mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        let amount = vec_map::get(&presale.members,&sender);
+        assert!(*amount == (5 * DECIMA), 1);
+        assert!(coin::value(&presale.balance) == 5 * DECIMA, 1);
+
+
+        test_utils::destroy(clock);
+        test_scenario::return_to_sender(&mut scenario, cap);
+        test_scenario::return_shared(presale);
+        end(scenario);
+    }
+
+    #[test]
+    fun test_fund_max() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+        create_presale<SUI>(START_TIMEL, END_TIME, 6 * DECIMA, 1 * DECIMA, 6 * DECIMA, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
+        let cap = test_scenario::take_from_sender<ManageCapAbility<SUI>>(&mut scenario);
+        let coin = mint_for_testing<SUI>(2 * DECIMA, &mut ctx);
+        let clock = clock::create_for_testing(&mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        assert!(coin::value(&presale.balance) == 2 * DECIMA, 1);
+
+        let coin = mint_for_testing<SUI>(2 * DECIMA, &mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        let amount = vec_map::get(&presale.members,&sender);
+        assert!(*amount == (4 * DECIMA), 1);
+        assert!(coin::value(&presale.balance) == 4 * DECIMA, 1);
+
+        let coin = mint_for_testing<SUI>(1 * DECIMA, &mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        let amount = vec_map::get(&presale.members,&sender);
+        assert!(*amount == (5 * DECIMA), 1);
+        assert!(coin::value(&presale.balance) == 5 * DECIMA, 1);
+
+        let coin = mint_for_testing<SUI>(1 * DECIMA, &mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        let amount = vec_map::get(&presale.members,&sender);
+        assert!(*amount == (6 * DECIMA), 1);
+        assert!(coin::value(&presale.balance) == 6 * DECIMA, 1);
+
+        test_utils::destroy(clock);
+        test_scenario::return_to_sender(&mut scenario, cap);
+        test_scenario::return_shared(presale);
+        end(scenario);
+    }
+
+    #[test]
+    #[expected_failure]
+    fun test_fund_outof_max() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+        create_presale<SUI>(START_TIMEL, END_TIME, 6 * DECIMA, 1 * DECIMA, 6 * DECIMA, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
+        let cap = test_scenario::take_from_sender<ManageCapAbility<SUI>>(&mut scenario);
+        let coin = mint_for_testing<SUI>(2 * DECIMA, &mut ctx);
+        let clock = clock::create_for_testing(&mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        assert!(coin::value(&presale.balance) == 2 * DECIMA, 1);
+
+        let coin = mint_for_testing<SUI>(2 * DECIMA, &mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        let amount = vec_map::get(&presale.members,&sender);
+        assert!(*amount == (4 * DECIMA), 1);
+        assert!(coin::value(&presale.balance) == 4 * DECIMA, 1);
+
+        let coin = mint_for_testing<SUI>(1 * DECIMA, &mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        let amount = vec_map::get(&presale.members,&sender);
+        assert!(*amount == (5 * DECIMA), 1);
+        assert!(coin::value(&presale.balance) == 5 * DECIMA, 1);
+
+        let coin = mint_for_testing<SUI>(2 * DECIMA, &mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        let amount = vec_map::get(&presale.members,&sender);
+        assert!(*amount == (7 * DECIMA), 1);
+        assert!(coin::value(&presale.balance) == 7 * DECIMA, 1);
+
+        test_utils::destroy(clock);
+        test_scenario::return_to_sender(&mut scenario, cap);
+        test_scenario::return_shared(presale);
+        end(scenario);
+    }
+
+    #[test]
+    fun test_fund_transfer() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+        create_presale<SUI>(START_TIMEL, END_TIME, 6 * DECIMA, 1 * DECIMA, 6 * DECIMA, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
+        let cap = test_scenario::take_from_sender<ManageCapAbility<SUI>>(&mut scenario);
+        let coin = mint_for_testing<SUI>(2 * DECIMA, &mut ctx);
+        let clock = clock::create_for_testing(&mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        assert!(coin::value(&presale.balance) == 2 * DECIMA, 1);
+        next_tx(&mut scenario,sender);
+        transfer_funds_to_self(&mut presale, &cap, &mut ctx);
+        assert!(coin::value(&presale.balance) == 0 * DECIMA, 2);
+        next_tx(&mut scenario,sender);
+        let amount = test_scenario::take_from_sender<Coin<SUI>>(&mut scenario);
+        assert!(coin::value(&amount) == 2 * DECIMA,3);
+
+        test_utils::destroy(clock);
+        test_scenario::return_to_sender(&mut scenario, amount);
+        test_scenario::return_to_sender(&mut scenario, cap);
+        test_scenario::return_shared(presale);
+        end(scenario);
+    }
+
+    #[test]
+    fun test_fund_transfer_to() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+        create_presale<SUI>(START_TIMEL, END_TIME, 6 * DECIMA, 1 * DECIMA, 6 * DECIMA, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
+        let cap = test_scenario::take_from_sender<ManageCapAbility<SUI>>(&mut scenario);
+        let coin = mint_for_testing<SUI>(2 * DECIMA, &mut ctx);
+        let clock = clock::create_for_testing(&mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        assert!(coin::value(&presale.balance) == 2 * DECIMA, 1);
+
+        transfer_funds(&mut presale, &cap,sender, &mut ctx);
+        assert!(coin::value(&presale.balance) == 0 * DECIMA, 2);
+        next_tx(&mut scenario,sender);
+        let amount = test_scenario::take_from_sender<Coin<SUI>>(&mut scenario);
+        assert!(coin::value(&amount) == 2 * DECIMA,3);
+
+
+        test_utils::destroy(clock);
+        test_scenario::return_to_sender(&mut scenario, amount);
+        test_scenario::return_to_sender(&mut scenario, cap);
+        test_scenario::return_shared(presale);
+        end(scenario);
+    }
+
+    #[test]
+    #[expected_failure]
+    fun test_starttime() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+        create_presale<SUI>(START_TIMEL+1, END_TIME, 100 * DECIMA, 1 * DECIMA, 5 * DECIMA, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
+        let cap = test_scenario::take_from_sender<ManageCapAbility<SUI>>(&mut scenario);
+        let coin = mint_for_testing<SUI>(5 * DECIMA, &mut ctx);
+        let clock = clock::create_for_testing(&mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        assert!(coin::value(&presale.balance) == 5 * DECIMA, 1);
+
+        test_utils::destroy(clock);
+        test_scenario::return_to_sender(&mut scenario, cap);
+        test_scenario::return_shared(presale);
+        end(scenario);
+    }
+
+    #[test]
+    #[expected_failure]
+    fun test_endtime() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+        create_presale<SUI>(START_TIMEL, END_TIME-1, 100 * DECIMA, 1 * DECIMA, 5 * DECIMA, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
+        let cap = test_scenario::take_from_sender<ManageCapAbility<SUI>>(&mut scenario);
+        let coin = mint_for_testing<SUI>(5 * DECIMA, &mut ctx);
+        let clock = clock::create_for_testing(&mut ctx);
+        clock::increment_for_testing(&mut clock, END_TIME);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        assert!(coin::value(&presale.balance) == 5 * DECIMA, 1);
+
+        test_utils::destroy(clock);
+        test_scenario::return_to_sender(&mut scenario, cap);
+        test_scenario::return_shared(presale);
+        end(scenario);
+    }
+
+    #[test]
+    fun test_init_presale() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+        create_presale<SUI>(START_TIMEL, END_TIME, 100 * DECIMA, 1 * DECIMA, 5 * DECIMA, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
+
+        assert!(presale.start_time == START_TIMEL, 1);
+        assert!(presale.end_time == END_TIME, 2);
+        assert!(presale.raise == 100 * DECIMA, 3);
+        assert!(presale.min_amount == 1 * DECIMA, 4);
+        assert!(presale.max_amount == 5 * DECIMA, 5);
+
+        test_scenario::return_shared(presale);
+        end(scenario);
+    }
+
+    #[test]
+    fun test_all() {}
 }
