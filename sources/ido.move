@@ -9,8 +9,7 @@ module presale::ido {
     use sui::coin;
     use sui::clock::Clock;
     use sui::clock;
-    use sui::vec_map;
-    use sui::vec_map::VecMap;
+
     #[test_only]
     use sui::test_scenario;
     #[test_only]
@@ -21,6 +20,9 @@ module presale::ido {
     use sui::coin::mint_for_testing;
     #[test_only]
     use sui::test_utils;
+    use sui::bag::Bag;
+    use sui::bag;
+    use sui::event;
 
     const NOT_WHITELIST: u64 = 1000;
     const NOT_STARTED: u64 = 1001;
@@ -45,8 +47,14 @@ module presale::ido {
         max_amount: u64,
         balance: Coin<T>,
         white_listed: vector<address>,
-        members: VecMap<address, u64>,
+        members: Bag,
     }
+
+    struct SaleEvent has copy, drop {
+        address: address,
+        amount: u64,
+    }
+
 
     public entry fun create_presale<T>(
         start_time: u64,
@@ -67,7 +75,7 @@ module presale::ido {
             max_amount,
             balance: coin::zero<T>(ctx),
             white_listed: vector::empty(),
-            members: vec_map::empty(),
+            members: bag::new(ctx),
         };
 
         public_transfer(ManageCapAbility<T> {
@@ -100,14 +108,18 @@ module presale::ido {
         assert!(amount <= sale.max_amount, USER_MAX_CAP_REACHED);
         assert!(amount >= sale.min_amount, USER_MAX_CAP_REACHED);
         coin::join(&mut sale.balance, payment);
+        event::emit(SaleEvent {
+            address: sender,
+            amount,
+        });
 
-        if (vec_map::contains(&mut sale.members, &sender)) {
-            let account_amount = vec_map::get_mut(&mut sale.members, &sender);
+        if (bag::contains(&mut sale.members, sender)) {
+            let account_amount = bag::borrow_mut<address, u64>(&mut sale.members, sender);
 
             assert!((*account_amount + amount) <= sale.max_amount, USER_MAX_CAP_REACHED);
             *account_amount = (*account_amount + amount);
         } else {
-            vec_map::insert(&mut sale.members, sender, amount);
+            bag::add(&mut sale.members, sender, amount);
         }
     }
 
@@ -247,8 +259,8 @@ module presale::ido {
         create_presale<SUI>(START_TIMEL, END_TIME, 100 * DECIMA, 1 * DECIMA, 5 * DECIMA, &mut ctx);
         next_tx(&mut scenario, sender);
         let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
-        let cap = ManageCapAbility<SUI>{
-            id:object::new(&mut ctx),
+        let cap = ManageCapAbility<SUI> {
+            id: object::new(&mut ctx),
             sale_id: object::id(&presale),
         };
         set_pub_or_wihte_listed_only(&mut presale, &cap);
@@ -286,6 +298,26 @@ module presale::ido {
     }
 
     #[test]
+    fun test_fund_save() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+        create_presale<SUI>(START_TIMEL, END_TIME, 100 * DECIMA, 1 * DECIMA, 1 * DECIMA, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
+        let cap = test_scenario::take_from_sender<ManageCapAbility<SUI>>(&mut scenario);
+        let coin = mint_for_testing<SUI>(1 * DECIMA, &mut ctx);
+        let clock = clock::create_for_testing(&mut ctx);
+        fund(&mut presale, coin, &clock, &mut ctx);
+        assert!(coin::value(&presale.balance) == 1 * DECIMA, 1);
+
+        test_utils::destroy(clock);
+        test_scenario::return_to_sender(&mut scenario, cap);
+        test_scenario::return_shared(presale);
+        end(scenario);
+    }
+
+    #[test]
     fun test_fund() {
         let ctx = tx_context::dummy();
         let sender = tx_context::sender(&mut ctx);
@@ -301,13 +333,13 @@ module presale::ido {
 
         let coin = mint_for_testing<SUI>(2 * DECIMA, &mut ctx);
         fund(&mut presale, coin, &clock, &mut ctx);
-        let amount = vec_map::get(&presale.members,&sender);
+        let amount = bag::borrow<address, u64>(&presale.members, sender);
         assert!(*amount == (4 * DECIMA), 1);
         assert!(coin::value(&presale.balance) == 4 * DECIMA, 1);
 
         let coin = mint_for_testing<SUI>(1 * DECIMA, &mut ctx);
         fund(&mut presale, coin, &clock, &mut ctx);
-        let amount = vec_map::get(&presale.members,&sender);
+        let amount = bag::borrow<address, u64>(&presale.members, sender);
         assert!(*amount == (5 * DECIMA), 1);
         assert!(coin::value(&presale.balance) == 5 * DECIMA, 1);
 
@@ -334,19 +366,19 @@ module presale::ido {
 
         let coin = mint_for_testing<SUI>(2 * DECIMA, &mut ctx);
         fund(&mut presale, coin, &clock, &mut ctx);
-        let amount = vec_map::get(&presale.members,&sender);
+        let amount = bag::borrow<address, u64>(&presale.members, sender);
         assert!(*amount == (4 * DECIMA), 1);
         assert!(coin::value(&presale.balance) == 4 * DECIMA, 1);
 
         let coin = mint_for_testing<SUI>(1 * DECIMA, &mut ctx);
         fund(&mut presale, coin, &clock, &mut ctx);
-        let amount = vec_map::get(&presale.members,&sender);
+        let amount = bag::borrow<address, u64>(&presale.members, sender);
         assert!(*amount == (5 * DECIMA), 1);
         assert!(coin::value(&presale.balance) == 5 * DECIMA, 1);
 
         let coin = mint_for_testing<SUI>(1 * DECIMA, &mut ctx);
         fund(&mut presale, coin, &clock, &mut ctx);
-        let amount = vec_map::get(&presale.members,&sender);
+        let amount = bag::borrow<address, u64>(&presale.members, sender);
         assert!(*amount == (6 * DECIMA), 1);
         assert!(coin::value(&presale.balance) == 6 * DECIMA, 1);
 
@@ -373,19 +405,19 @@ module presale::ido {
 
         let coin = mint_for_testing<SUI>(2 * DECIMA, &mut ctx);
         fund(&mut presale, coin, &clock, &mut ctx);
-        let amount = vec_map::get(&presale.members,&sender);
+        let amount = bag::borrow<address, u64>(&presale.members, sender);
         assert!(*amount == (4 * DECIMA), 1);
         assert!(coin::value(&presale.balance) == 4 * DECIMA, 1);
 
         let coin = mint_for_testing<SUI>(1 * DECIMA, &mut ctx);
         fund(&mut presale, coin, &clock, &mut ctx);
-        let amount = vec_map::get(&presale.members,&sender);
+        let amount = bag::borrow<address, u64>(&presale.members, sender);
         assert!(*amount == (5 * DECIMA), 1);
         assert!(coin::value(&presale.balance) == 5 * DECIMA, 1);
 
         let coin = mint_for_testing<SUI>(2 * DECIMA, &mut ctx);
         fund(&mut presale, coin, &clock, &mut ctx);
-        let amount = vec_map::get(&presale.members,&sender);
+        let amount = bag::borrow<address, u64>(&presale.members, sender);
         assert!(*amount == (7 * DECIMA), 1);
         assert!(coin::value(&presale.balance) == 7 * DECIMA, 1);
 
@@ -408,12 +440,12 @@ module presale::ido {
         let clock = clock::create_for_testing(&mut ctx);
         fund(&mut presale, coin, &clock, &mut ctx);
         assert!(coin::value(&presale.balance) == 2 * DECIMA, 1);
-        next_tx(&mut scenario,sender);
+        next_tx(&mut scenario, sender);
         transfer_funds_to_self(&mut presale, &cap, &mut ctx);
         assert!(coin::value(&presale.balance) == 0 * DECIMA, 2);
-        next_tx(&mut scenario,sender);
+        next_tx(&mut scenario, sender);
         let amount = test_scenario::take_from_sender<Coin<SUI>>(&mut scenario);
-        assert!(coin::value(&amount) == 2 * DECIMA,3);
+        assert!(coin::value(&amount) == 2 * DECIMA, 3);
 
         test_utils::destroy(clock);
         test_scenario::return_to_sender(&mut scenario, amount);
@@ -436,11 +468,11 @@ module presale::ido {
         fund(&mut presale, coin, &clock, &mut ctx);
         assert!(coin::value(&presale.balance) == 2 * DECIMA, 1);
 
-        transfer_funds(&mut presale, &cap,sender, &mut ctx);
+        transfer_funds(&mut presale, &cap, sender, &mut ctx);
         assert!(coin::value(&presale.balance) == 0 * DECIMA, 2);
-        next_tx(&mut scenario,sender);
+        next_tx(&mut scenario, sender);
         let amount = test_scenario::take_from_sender<Coin<SUI>>(&mut scenario);
-        assert!(coin::value(&amount) == 2 * DECIMA,3);
+        assert!(coin::value(&amount) == 2 * DECIMA, 3);
 
 
         test_utils::destroy(clock);
@@ -456,7 +488,7 @@ module presale::ido {
         let ctx = tx_context::dummy();
         let sender = tx_context::sender(&mut ctx);
         let scenario = test_scenario::begin(sender);
-        create_presale<SUI>(START_TIMEL+1, END_TIME, 100 * DECIMA, 1 * DECIMA, 5 * DECIMA, &mut ctx);
+        create_presale<SUI>(START_TIMEL + 1, END_TIME, 100 * DECIMA, 1 * DECIMA, 5 * DECIMA, &mut ctx);
         next_tx(&mut scenario, sender);
         let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
         let cap = test_scenario::take_from_sender<ManageCapAbility<SUI>>(&mut scenario);
@@ -477,7 +509,7 @@ module presale::ido {
         let ctx = tx_context::dummy();
         let sender = tx_context::sender(&mut ctx);
         let scenario = test_scenario::begin(sender);
-        create_presale<SUI>(START_TIMEL, END_TIME-1, 100 * DECIMA, 1 * DECIMA, 5 * DECIMA, &mut ctx);
+        create_presale<SUI>(START_TIMEL, END_TIME - 1, 100 * DECIMA, 1 * DECIMA, 5 * DECIMA, &mut ctx);
         next_tx(&mut scenario, sender);
         let presale = test_scenario::take_shared<PreSale<SUI>>(&mut scenario);
         let cap = test_scenario::take_from_sender<ManageCapAbility<SUI>>(&mut scenario);
