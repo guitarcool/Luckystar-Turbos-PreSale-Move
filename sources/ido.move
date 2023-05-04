@@ -49,7 +49,6 @@ module presale::ido {
         amount: u64,
     }
 
-
     public entry fun create_presale<T>(
         start_time: u64,
         end_time: u64,
@@ -169,22 +168,35 @@ module presale::ido {
         }
     }
 
-    public entry fun increment_endtime<T>(
+    public entry fun change_time<T>(
         sale: &mut PreSale<T>,
         manage: &ManageCapAbility<T>,
+        start_time:u64,
         end_time: u64
     ) {
         assert!(object::id(sale) == manage.sale_id, OWNER_ONLY);
+        sale.start_time = start_time;
         sale.end_time = end_time;
     }
 
-    public entry fun increment_starttime<T>(
+    public entry fun change_fund_amount<T>(
         sale: &mut PreSale<T>,
         manage: &ManageCapAbility<T>,
-        start_time: u64
+        min_amount: u64,
+        max_amount: u64
     ) {
         assert!(object::id(sale) == manage.sale_id, OWNER_ONLY);
-        sale.start_time = start_time;
+        sale.min_amount = min_amount;
+        sale.max_amount = max_amount;
+    }
+
+    public entry fun change_raise<T>(
+        sale: &mut PreSale<T>,
+        manage: &ManageCapAbility<T>,
+        raise: u64
+    ) {
+        assert!(object::id(sale) == manage.sale_id, OWNER_ONLY);
+        sale.raise = raise;
     }
 
     #[test_only]
