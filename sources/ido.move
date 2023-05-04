@@ -1,28 +1,22 @@
 module presale::ido {
-    use sui::object::{UID, ID};
-    use sui::object;
-    use sui::tx_context::TxContext;
     use std::vector;
-    use sui::transfer::{public_share_object, public_transfer};
-    use sui::tx_context;
-    use sui::coin::Coin;
-    use sui::coin;
-    use sui::clock::Clock;
-    use sui::clock;
 
-    #[test_only]
-    use sui::test_scenario;
-    #[test_only]
-    use sui::sui::SUI;
-    #[test_only]
-    use sui::test_scenario::{end, next_tx};
+    use sui::bag::{Self, Bag};
+    use sui::clock::{Self, Clock};
+    use sui::coin::{Self, Coin};
+    use sui::event;
+    use sui::object::{Self, UID, ID};
+    use sui::transfer::{public_share_object, public_transfer};
+    use sui::tx_context::{Self, TxContext};
+
     #[test_only]
     use sui::coin::mint_for_testing;
     #[test_only]
+    use sui::sui::SUI;
+    #[test_only]
+    use sui::test_scenario::{Self, end, next_tx};
+    #[test_only]
     use sui::test_utils;
-    use sui::bag::Bag;
-    use sui::bag;
-    use sui::event;
 
     const NOT_WHITELIST: u64 = 1000;
     const NOT_STARTED: u64 = 1001;
@@ -46,7 +40,7 @@ module presale::ido {
         min_amount: u64,
         max_amount: u64,
         balance: Coin<T>,
-        white_listed: vector<address>,
+        white_listed: Bag,
         members: Bag,
     }
 
@@ -74,7 +68,7 @@ module presale::ido {
             min_amount,
             max_amount,
             balance: coin::zero<T>(ctx),
-            white_listed: vector::empty(),
+            white_listed: bag::new(ctx),
             members: bag::new(ctx),
         };
 
@@ -88,7 +82,7 @@ module presale::ido {
 
 
     fun is_whitelisted<T>(sale: &PreSale<T>, address: address): bool {
-        vector::contains(&sale.white_listed, &address)
+        bag::contains(&sale.white_listed, address)
     }
 
     public entry fun fund<T>(sale: &mut PreSale<T>, payment: Coin<T>, clock: &Clock, ctx: &mut TxContext) {
@@ -169,7 +163,7 @@ module presale::ido {
         while (i < length) {
             let address = vector::pop_back(&mut list);
             if (!is_whitelisted(sale, address)) {
-                vector::push_back(&mut sale.white_listed, address);
+                bag::add(&mut sale.white_listed, address, true);
             };
             i = i + 1;
         }
