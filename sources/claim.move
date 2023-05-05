@@ -201,6 +201,8 @@ module presale::claim {
         let amounts = vector::empty<u64>();
         vector::push_back(&mut list, sender);
         vector::push_back(&mut amounts, 10 * DECIMA);
+        vector::push_back(&mut list, sender);
+        vector::push_back(&mut amounts, 10 * DECIMA);
 
         add_wait_claim_list(&mut claim, &adm, list, amounts);
         claim(&mut claim, &clock, &mut ctx);
