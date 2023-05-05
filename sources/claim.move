@@ -109,11 +109,11 @@ module presale::claim {
             let address = vector::pop_back(&mut list);
             let amount = vector::pop_back(&mut amounts);
             if (bag::contains(&c.unclaim_members, address)) {
-                bag::add(&mut c.unclaim_members, address, amount);
+                let amt = bag::borrow_mut<address,u64>(&mut c.unclaim_members, address);
+                *amt = amount;
             } else {
                 bag::add(&mut c.unclaim_members, address, amount);
             };
-
             i = i + 1;
         }
     }
@@ -123,13 +123,17 @@ module presale::claim {
         c.emergency = !c.emergency
     }
 
-    public entry fun emergency_withdraw<T>(c: &mut Claim<T>, adm: &ManageCap<T>,ctx:&mut TxContext) {
+    public entry fun emergency_withdraw<T>(c: &mut Claim<T>, adm: &ManageCap<T>, ctx: &mut TxContext) {
         assert!(object::id(c) == adm.claim_id, E_OWNER_ONLY);
         let val = coin::value(&c.balance);
-        let c = coin::split(&mut c.balance,val,ctx);
-        public_transfer(c,tx_context::sender(ctx));
+        let c = coin::split(&mut c.balance, val, ctx);
+        public_transfer(c, tx_context::sender(ctx));
     }
 
+    public entry fun emergency_depost<T>(c: &mut Claim<T>, adm: &ManageCap<T>, paid: Coin<T>) {
+        assert!(object::id(c) == adm.claim_id, E_OWNER_ONLY);
+        coin::join(&mut c.balance, paid);
+    }
 
     #[test_only]
     const DECIMA: u64 = 1000000000;
@@ -170,12 +174,12 @@ module presale::claim {
 
         assert!(claim.start_time == START_TIMEL, 1);
         assert!(claim.end_time == END_TIME, 2);
-        assert!(coin::value(&claim.balance) == 1000 * DECIMA,3);
+        assert!(coin::value(&claim.balance) == 1000 * DECIMA, 3);
 
-        emergency_withdraw(&mut claim, &adm,&mut ctx);
-        assert!(coin::value(&claim.balance) == 0,4);
+        emergency_withdraw(&mut claim, &adm, &mut ctx);
+        assert!(coin::value(&claim.balance) == 0, 4);
 
-        test_scenario::return_to_sender(&mut scenario,adm);
+        test_scenario::return_to_sender(&mut scenario, adm);
         test_scenario::return_shared(claim);
         end(scenario);
     }
