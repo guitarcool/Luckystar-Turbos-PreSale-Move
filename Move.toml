@@ -1,7 +1,7 @@
 [package]
 name = "PreSale"
 version = "0.0.1"
-published-at = "0xe534c8978a3b45ca90d4a3f9e8a0809597c98f43b63d11f7d73df7e228739090"
+
 
 [dependencies]
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "testnet" }
