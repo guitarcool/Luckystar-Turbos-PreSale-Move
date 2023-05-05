@@ -123,6 +123,14 @@ module presale::claim {
         c.emergency = !c.emergency
     }
 
+    public entry fun emergency_withdraw<T>(c: &mut Claim<T>, adm: &ManageCap<T>,ctx:&mut TxContext) {
+        assert!(object::id(c) == adm.claim_id, E_OWNER_ONLY);
+        let val = coin::value(&c.balance);
+        let c = coin::split(&mut c.balance,val,ctx);
+        public_transfer(c,tx_context::sender(ctx));
+    }
+
+
     #[test_only]
     const DECIMA: u64 = 1000000000;
     #[test_only]
@@ -144,6 +152,30 @@ module presale::claim {
         assert!(claim.start_time == START_TIMEL, 1);
         assert!(claim.end_time == END_TIME, 2);
 
+        test_scenario::return_shared(claim);
+        end(scenario);
+    }
+
+    #[test]
+    fun test_emergency_withdraw() {
+        let ctx = tx_context::dummy();
+        let sender = tx_context::sender(&mut ctx);
+        let scenario = test_scenario::begin(sender);
+
+        let s = coin::mint_for_testing<SUI>(1000 * DECIMA, &mut ctx);
+        create_claim(s, START_TIMEL, END_TIME, &mut ctx);
+        next_tx(&mut scenario, sender);
+        let claim = test_scenario::take_shared<Claim<SUI>>(&mut scenario);
+        let adm = test_scenario::take_from_sender<ManageCap<SUI>>(&mut scenario);
+
+        assert!(claim.start_time == START_TIMEL, 1);
+        assert!(claim.end_time == END_TIME, 2);
+        assert!(coin::value(&claim.balance) == 1000 * DECIMA,3);
+
+        emergency_withdraw(&mut claim, &adm,&mut ctx);
+        assert!(coin::value(&claim.balance) == 0,4);
+
+        test_scenario::return_to_sender(&mut scenario,adm);
         test_scenario::return_shared(claim);
         end(scenario);
     }
