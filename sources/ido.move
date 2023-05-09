@@ -17,7 +17,6 @@ module presale::ido {
     use sui::test_scenario::{Self, end, next_tx};
     #[test_only]
     use sui::test_utils;
-
     const NOT_WHITELIST: u64 = 1000;
     const NOT_STARTED: u64 = 1001;
     const MAX_CAP_REACHED: u64 = 1002;
@@ -32,7 +31,6 @@ module presale::ido {
 
     struct PreSale<phantom T> has key, store {
         id: UID,
-        status: u8,
         only_whitelist: bool,
         raise: u64,
         start_time: u64,
@@ -59,7 +57,6 @@ module presale::ido {
     ) {
         let presale = PreSale<T> {
             id: object::new(ctx),
-            status: 0,
             only_whitelist: false,
             raise,
             start_time,
@@ -99,7 +96,7 @@ module presale::ido {
 
         assert!(balance + amount <= sale.raise, MAX_CAP_REACHED);
         assert!(amount <= sale.max_amount, USER_MAX_CAP_REACHED);
-        assert!(amount >= sale.min_amount, USER_MAX_CAP_REACHED);
+        assert!(amount >= sale.min_amount, USER_MIN_CAP_REACHED);
         coin::join(&mut sale.balance, payment);
         event::emit(SaleEvent {
             address: sender,
@@ -136,11 +133,7 @@ module presale::ido {
         ctx: &mut TxContext
     ) {
         assert!(object::id(sale) == manage.sale_id, OWNER_ONLY);
-
-        let amount = coin::value(&sale.balance);
-        let split_amount = coin::split(&mut sale.balance, amount, ctx);
-
-        public_transfer(split_amount, tx_context::sender(ctx));
+        transfer_funds(sale, manage, tx_context::sender(ctx), ctx);
     }
 
     public entry fun set_pub_or_wihte_listed_only<T>(
@@ -168,16 +161,41 @@ module presale::ido {
         }
     }
 
-    public entry fun change_time<T>(
+    public entry fun delete_white_list<T>(
         sale: &mut PreSale<T>,
         manage: &ManageCapAbility<T>,
-        start_time:u64,
+        list: vector<address>
+    ) {
+        assert!(object::id(sale) == manage.sale_id, OWNER_ONLY);
+        let length = vector::length(&list);
+        let i = 0;
+        while (i < length) {
+            let address = vector::pop_back(&mut list);
+            if (is_whitelisted(sale, address)) {
+                bag::remove<address,bool>(&mut sale.white_listed, address);
+            };
+            i = i + 1;
+        }
+    }
+
+    public entry fun change_end_time<T>(
+        sale: &mut PreSale<T>,
+        manage: &ManageCapAbility<T>,
         end_time: u64
     ) {
         assert!(object::id(sale) == manage.sale_id, OWNER_ONLY);
-        sale.start_time = start_time;
         sale.end_time = end_time;
     }
+
+    public entry fun change_start_time<T>(
+        sale: &mut PreSale<T>,
+        manage: &ManageCapAbility<T>,
+        start_time:u64,
+    ) {
+        assert!(object::id(sale) == manage.sale_id, OWNER_ONLY);
+        sale.start_time = start_time;
+    }
+
 
     public entry fun change_fund_amount<T>(
         sale: &mut PreSale<T>,

@@ -933,7 +933,9 @@ let add_white_list = async (vec_address: string[]) => {
     faucet: "https://faucet.devnet.sui.io/gas",
   });
 
-  const keypair = Ed25519Keypair.deriveKeypair("");
+  const keypair = Ed25519Keypair.deriveKeypair(
+    "surround park unknown crane regular episode liquid file increase rescue warfare west"
+  );
 
   const pkg =
     "0xa4ad1545666eb4cd3d0d284711a2598f46afb5afc801c0209c805f701952e4be";
