@@ -153,9 +153,9 @@ module presale::ido {
         let length = vector::length(&list);
         let i = 0;
         while (i < length) {
-            let address = vector::pop_back(&mut list);
-            if (!is_whitelisted(sale, address)) {
-                bag::add(&mut sale.white_listed, address, true);
+            let addr = vector::pop_back(&mut list);
+            if (!is_whitelisted(sale, addr)) {
+                bag::add(&mut sale.white_listed, addr, true);
             };
             i = i + 1;
         }
@@ -170,9 +170,9 @@ module presale::ido {
         let length = vector::length(&list);
         let i = 0;
         while (i < length) {
-            let address = vector::pop_back(&mut list);
-            if (is_whitelisted(sale, address)) {
-                bag::remove<address,bool>(&mut sale.white_listed, address);
+            let addr = vector::pop_back(&mut list);
+            if (is_whitelisted(sale, addr)) {
+                bag::remove<address,bool>(&mut sale.white_listed, addr);
             };
             i = i + 1;
         }
