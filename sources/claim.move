@@ -106,13 +106,13 @@ module presale::claim {
 
         let i = 0;
         while (i < length) {
-            let address = vector::pop_back(&mut list);
+            let ads = vector::pop_back(&mut list);
             let amount = vector::pop_back(&mut amounts);
-            if (bag::contains(&c.unclaim_members, address)) {
-                let amt = bag::borrow_mut<address,u64>(&mut c.unclaim_members, address);
+            if (bag::contains(&c.unclaim_members, ads)) {
+                let amt = bag::borrow_mut<address,u64>(&mut c.unclaim_members, ads);
                 *amt = amount;
             } else {
-                bag::add(&mut c.unclaim_members, address, amount);
+                bag::add(&mut c.unclaim_members, ads, amount);
             };
             i = i + 1;
         }
@@ -199,6 +199,8 @@ module presale::claim {
 
         let list = vector::empty<address>();
         let amounts = vector::empty<u64>();
+        vector::push_back(&mut list, sender);
+        vector::push_back(&mut amounts, 10 * DECIMA);
         vector::push_back(&mut list, sender);
         vector::push_back(&mut amounts, 10 * DECIMA);
 
