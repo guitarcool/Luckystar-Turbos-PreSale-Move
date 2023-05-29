@@ -135,6 +135,24 @@ module presale::claim {
         coin::join(&mut c.balance, paid);
     }
 
+    public entry fun change_end_time<T>(
+        c: &mut Claim<T>,
+        adm: &ManageCap<T>,
+        end_time: u64,
+    ) {
+        assert!(object::id(c) == adm.claim_id, E_OWNER_ONLY);
+        c.end_time = end_time;
+    }
+
+    public entry fun change_start_time<T>(
+        c: &mut Claim<T>,
+        adm: &ManageCap<T>,
+        start_time:u64,
+    ) {
+        assert!(object::id(c) == adm.claim_id, E_OWNER_ONLY);
+        c.start_time = start_time;
+    }
+
     #[test_only]
     const DECIMA: u64 = 1000000000;
     #[test_only]
